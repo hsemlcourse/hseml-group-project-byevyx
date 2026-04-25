@@ -22,19 +22,22 @@
 
 ## Описание задачи
 
-**Задача:** бинарная классификация направления дневного движения цены акции (или индекса S&P 500):
-`1` — цена закрытия следующего торгового дня выше цены закрытия сегодня, `0` — ниже или равна.
+**Задача:** бинарная классификация направления движения цены акции (или индекса S&P 500) на горизонте `H` дней:
+`1` — цена закрытия через `H` дней выше цены закрытия сегодня, `0` — ниже или равна.
+Базовый горизонт `H=5` дней (свинг-таймфрейм; см. `analysis.md` §5.3 — на дневном горизонте сигнал утопает в шуме).
 
 Вместо регрессии абсолютной цены модель обучается находить короткие паттерны для свинг-сделок.
-На основе сырых OHLCV-данных методами Feature Engineering генерируются технические индикаторы
-(RSI, MACD, скользящие средние, волатильность и пр.). Валидация строится на `TimeSeriesSplit`,
-чтобы исключить «заглядывание в будущее».
+Из сырых OHLCV-данных генерируются 9 технических индикаторов (RSI, MACD, скользящие средние,
+волатильность и пр.) и 5 макро-фичей (VIX, спред 10Y−3M, доходность DXY). Валидация строится
+на `TimeSeriesSplit`, чтобы исключить «заглядывание в будущее».
 
-**Датасет:** исторические котировки, скачиваемые через [`yfinance`](https://pypi.org/project/yfinance/).
+**Датасет:** исторические котировки 5 тикеров (`^GSPC, AAPL, MSFT, JPM, XOM`) и макро-серий
+(`^VIX, ^TNX, ^IRX, DX-Y.NYB`) через [`yfinance`](https://pypi.org/project/yfinance/) за 2010–2024.
+Поддерживается **multi-ticker pooled training** — модель учится общим паттернам по 5 активам.
 
-**Целевая метрика:** **Precision** при заданном пороге срабатывания — точность торгового сигнала
-должна обеспечивать математическое ожидание сделки выше комиссий брокера. Итог — бэктест
-стратегии на отложенной тестовой выборке.
+**Целевая метрика:** **Precision** при пороге, подбираемом на val (`trade_freq ≥ 0.15`) — точность
+торгового сигнала должна давать матожидание сделки выше комиссий брокера. Итог — бэктест с
+position sizing и stop-loss на отложенной тестовой выборке.
 
 
 ## Структура репозитория
@@ -46,16 +49,26 @@
 │   └── processed               # Очищенные/фичеризованные данные (gitignored)
 ├── models                      # Сохранённые артефакты моделей (gitignored)
 ├── notebooks
+│   ├── previous_exps           # Здесь хранятся прошлые и неудачные эксперименты для итогово отчета
 │   ├── 01_eda.ipynb            # Разведочный анализ
 │   ├── 02_baseline.ipynb       # Baseline-модель (Logistic Regression)
 │   └── 03_experiments.ipynb    # Эксперименты и ablation study
 ├── presentation                # Презентация к защите
 ├── report
 │   ├── images                  # Изображения для отчёта
+│   ├── analysis.md             # Анализ метрик/графиков + план улучшений
 │   └── report.md               # Финальный отчёт
+├── feature-description.md      # Детальное описание 14 фичей (ТА + макро)
 ├── src
-│   ├── preprocessing.py        # Загрузка и обработка данных, фичеринжиниринг
-│   └── modeling.py             # Обучение, оценка, бэктест
+│   ├── preprocessing.py        # OHLCV + 9 ТА-фичей + 5 макро-фичей + multi-ticker pooling
+│   ├── modeling.py             # Утилиты сплита, baseline-модели, метрики
+│   ├── models.py               # 5 моделей (LogReg, RF, XGB, LGBM, MLP) + Voting/Stacking
+│   ├── transformers.py         # Winsorizer для линейных моделей
+│   ├── tuning.py               # Optuna-тюнинг XGBoost + isotonic-калибровка
+│   ├── threshold.py            # Подбор порога на val (Precision @ trade_freq)
+│   ├── cv.py                   # TimeSeriesSplit CV для оценки стабильности
+│   ├── backtest.py             # Бэктест с position sizing + stop-loss
+│   └── experiments.py          # End-to-end run_experiment()
 ├── tests
 │   └── test_smoke.py           # Smoke-тесты пайплайна
 ├── .github/workflows/ci.yml    # Lint + format check + tests
@@ -91,7 +104,7 @@ make docker-up
 git clone <url>
 cd hseml-group-project-byevyx
 
-python3.10 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate          # Linux/macOS
 # .venv\Scripts\activate            # Windows
 
@@ -119,20 +132,73 @@ make install-dev                    # зависимости + pre-commit hooks
 
 ## Данные
 
-- `data/raw/` — исходные котировки, выгруженные через `yfinance`
-- `data/processed/` — подготовленные датасеты с техническими индикаторами и целевой переменной
+- `data/raw/` — исходные котировки и макро-серии, выгруженные через `yfinance` (5 тикеров + 4 макро). Кэшируются в CSV; повторные прогоны идут из кэша (`use_cache=True` по умолчанию).
+- `data/processed/` — подготовленные датасеты с техническими индикаторами и целевой переменной.
 
 Файлы данных в git не коммитятся (см. [`.gitignore`](.gitignore)); фиксируется только структура папок.
+
+### Полный список фичей
+
+См. [`feature-description.md`](feature-description.md) для подробного описания каждой фичи (формула, экономический смысл, влияние на target).
+
+| Группа | Фичи | Описание |
+|---|---|---|
+| **Технические (9)** | `Daily_Return`, `Lag_Return_1`, `RSI_14`, `Price_to_SMA20`, `MACD_Histogram`, `Bollinger_pctB`, `ATR_14`, `Volume_ROC`, `Upper_Shadow_Ratio` | Momentum, mean-reversion, волатильность, объём, свечной паттерн |
+| **Макро (5)** | `VIX_Level`, `VIX_Change`, `Yield_Spread` (10Y−3M), `Yield_Spread_Change`, `DXY_Return` | Контекст рынка независимый от тикера: страх/жадность, рецессионный сигнал, доллар |
+
+
+## Пайплайн
+
+Полный прогон одним вызовом:
+
+```python
+from src.experiments import run_experiment
+
+result = run_experiment(
+    ticker=["^GSPC", "AAPL", "MSFT", "JPM", "XOM"],  # multi-ticker pooled training
+    start="2010-01-01",
+    end="2024-12-31",
+    target_horizon=5,           # 5-дневный горизонт
+    include_macro=True,         # +5 макро-фичей
+    tune_xgb=True,              # Optuna-тюнинг на TimeSeriesSplit
+    n_trials=30,
+    calibrate=True,             # isotonic-калибровка вероятностей
+    eval_ticker="^GSPC",        # на каком тикере мерить val/test
+    min_trade_freq=0.15,
+)
+```
+
+Бэктест с position sizing + stop-loss:
+
+```python
+from src.backtest import backtest_with_sizing
+
+bt = backtest_with_sizing(
+    test_df,
+    proba=result.test_proba["XGBoost_tuned_calibrated"],
+    threshold=result.thresholds["XGBoost_tuned_calibrated"],
+    fee=0.002,
+    horizon=5,
+    stop_loss=-0.03,
+    confidence_scaling=True,    # размер позиции ∝ (proba−threshold)/(1−threshold)
+)
+```
 
 
 ## Результаты
 
-| Модель          | Precision | ROC-AUC | Примечание |
-|-----------------|-----------|---------|------------|
-| Baseline (LogReg) | —       | —       | OHLCV без фич |
-| Лучшая модель   | —         | —       |            |
+Бэктест на test 2024 (AAPL), все 5 улучшений против исходного baseline:
+
+| Метрика | Baseline (1d, 9 ТА) | + Macro + 5d + Pooled + Sizing/Stop |
+|---|---|---|
+| cum_return | −45.23% | **+14.78%** |
+| Sharpe | −2.67 | **+1.47** |
+| max_drawdown | −45.72% | **−7.83%** |
+
+Подробная таблица по всем моделям и тикерам — в `notebooks/03_experiments.ipynb` (секция 15).
 
 
 ## Отчёт
 
-Финальный отчёт: [`report/report.md`](report/report.md).
+- [`report/analysis.md`](report/analysis.md) — анализ всех метрик/графиков из ноутбуков и план улучшений.
+- [`report/report.md`](report/report.md) — финальный отчёт.
