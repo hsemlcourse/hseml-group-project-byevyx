@@ -202,3 +202,60 @@ bt = backtest_with_sizing(
 
 - [`report/analysis.md`](report/analysis.md) — анализ всех метрик/графиков из ноутбуков и план улучшений.
 - [`report/report.md`](report/report.md) — финальный отчёт.
+
+
+## REST API
+
+Поверх ML-пайплайна поднят сервис на FastAPI (`src/api/`). Подходит для интеграции с фронтом на другом порту — CORS открыт всем origin в dev-режиме.
+
+### Запуск
+
+```bash
+pip install -r requirements.txt
+make api-train     # обучает модели и пишет models/*.joblib + models/metadata.json
+make api-up        # uvicorn на http://localhost:8000
+```
+
+Swagger UI: <http://localhost:8000/docs>.
+
+### Эндпоинты
+
+| Метод | Путь        | Назначение |
+|------:|-------------|------------|
+| GET   | `/health`   | health-check + статус загрузки реестра моделей |
+| GET   | `/models`   | список моделей + threshold/features/val/test метрики |
+| POST  | `/predict`  | сигнал на конкретную дату по тикеру |
+| POST  | `/backtest` | бэктест по тикеру за период, equity curve + Sharpe + drawdown |
+
+Примеры:
+
+```bash
+curl http://localhost:8000/health
+
+curl -X POST http://localhost:8000/predict \
+  -H 'content-type: application/json' \
+  -d '{"ticker":"^GSPC","date":"2024-06-03"}'
+
+curl -X POST http://localhost:8000/backtest \
+  -H 'content-type: application/json' \
+  -d '{"ticker":"^GSPC","start":"2024-01-01","end":"2024-12-31"}'
+```
+
+### CORS
+
+В [`src/api/main.py`](src/api/main.py) подключён `CORSMiddleware` c `allow_origins=["*"]`, `allow_methods=["*"]`, `allow_headers=["*"]`. `allow_credentials=False` — спецификация CORS запрещает совмещать wildcard с credentials. Для прода сузить `allow_origins` до конкретных доменов и при необходимости включить credentials.
+
+
+## Frontend (KABU 株)
+
+Поверх API поднят Next.js-интерфейс в духе японского трейдингового дашборда эпохи Эдо (бордовый, кармин, чёрный, золото — без фиолетового). Полная документация — в [`frontend/README.md`](frontend/README.md).
+
+```bash
+cd frontend
+cp .env.local.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8000
+npm install
+npm run dev
+# UI -> http://localhost:3000
+```
+
+Фронт использует уже существующие ручки API (`/health`, `/models`, `/predict`, `/backtest`) плюс две тонкие надстройки над тем же пайплайном — `/ohlcv` и `/tickers`. Стек: Next.js 14 (App Router), TypeScript, Tailwind, TradingView `lightweight-charts`, TanStack Query, Zustand.

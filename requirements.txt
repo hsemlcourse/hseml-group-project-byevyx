@@ -32,3 +32,9 @@ ipykernel>=6.0.0
 joblib>=1.3.0
 python-dotenv>=1.0.0
 tqdm>=4.66.0
+
+# API
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.5
+httpx>=0.27  # требуется fastapi.testclient в tests/test_api.py

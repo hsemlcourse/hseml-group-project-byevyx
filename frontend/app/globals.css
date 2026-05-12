@@ -1,0 +1,189 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --ring: rgba(232, 197, 71, 0.35);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: #16131c;
+  background-image:
+    radial-gradient(circle at 12% -10%, rgba(230, 57, 80, 0.10) 0%, transparent 55%),
+    radial-gradient(circle at 92% 0%, rgba(232, 197, 71, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 50% 110%, rgba(107, 137, 184, 0.07) 0%, transparent 55%);
+  background-attachment: fixed;
+  color: #f2ead3;
+  font-family:
+    var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01", "cv01";
+  overflow-x: hidden;
+}
+
+/* Whisper-soft washi grain — barely visible texture on top of the gradient. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: radial-gradient(
+    rgba(242, 234, 211, 0.018) 1px,
+    transparent 1px
+  );
+  background-size: 3px 3px;
+  mix-blend-mode: screen;
+}
+
+/* Washi paper light theme overrides. */
+html.theme-washi body {
+  background-color: #f5f1e6;
+  background-image:
+    radial-gradient(circle at 12% -10%, rgba(230, 57, 80, 0.07) 0%, transparent 55%),
+    radial-gradient(circle at 92% 0%, rgba(184, 150, 35, 0.08) 0%, transparent 50%);
+  color: #1f1a24;
+}
+html.theme-washi body::before {
+  background-image: radial-gradient(
+    rgba(31, 26, 36, 0.05) 1px,
+    transparent 1px
+  );
+  mix-blend-mode: multiply;
+}
+
+/* Refined scrollbar — golden hairline, only on hover. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(232, 197, 71, 0.12);
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(232, 197, 71, 0.3);
+}
+
+::selection {
+  background: rgba(230, 57, 80, 0.35);
+  color: #f2ead3;
+}
+
+@layer components {
+  /* The default surface used everywhere — soft glow, no harsh borders. */
+  .panel {
+    @apply relative rounded-xl bg-ink-50/85 backdrop-blur-md
+           border border-ivory/[0.06] shadow-elevation
+           overflow-hidden;
+  }
+  .panel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, transparent 40%);
+    pointer-events: none;
+  }
+
+  .panel-header {
+    @apply flex items-center justify-between gap-2 px-4 py-2.5
+           border-b border-ivory/[0.06]
+           text-[11px] tracking-[0.14em] uppercase
+           text-ivory/55 font-medium;
+  }
+
+  .panel-title {
+    @apply flex items-center gap-2.5;
+  }
+  .panel-title::before {
+    content: "";
+    @apply w-1 h-3 rounded-full bg-gradient-to-b from-carmine to-burgundy;
+  }
+
+  .stamp {
+    @apply relative flex items-center justify-center rounded-full font-jp
+           text-ivory bg-gradient-to-br from-burgundy-400 via-burgundy to-burgundy-600
+           shadow-seal;
+  }
+
+  .btn-carmine {
+    @apply relative inline-flex items-center justify-center gap-2
+           rounded-lg px-4 py-2 text-sm font-medium text-ivory
+           bg-gradient-to-b from-carmine to-carmine-600
+           shadow-[0_6px_16px_-8px_rgba(230,57,80,0.6)]
+           transition hover:brightness-110 active:brightness-95
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5
+           rounded-lg border border-ivory/[0.08] bg-ivory/[0.02]
+           px-2.5 py-1.5 text-xs text-ivory/70
+           transition hover:bg-ivory/[0.06] hover:text-ivory hover:border-gold/30;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full
+           border border-ivory/[0.08] bg-ivory/[0.03]
+           px-2 py-0.5 text-[10px] tracking-widest uppercase
+           text-ivory/60;
+  }
+
+  .input-soft {
+    @apply rounded-md border border-ivory/[0.08] bg-ivory/[0.025]
+           px-2.5 py-1.5 text-sm outline-none transition
+           placeholder:text-ivory/30
+           focus:border-gold/40 focus:bg-ivory/[0.04];
+  }
+
+  .kanji-watermark {
+    @apply pointer-events-none absolute select-none
+           font-jp text-ivory/[0.035] leading-none;
+  }
+
+  /* Children fade in like ink soaking into paper. */
+  .ink-wash > * {
+    animation: inkWash 500ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+
+  /* Subtle shimmer used as a placeholder accent on key numbers. */
+  .shimmer {
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgba(232, 197, 71, 0.25),
+      transparent
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2400ms linear infinite;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .mono-num {
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  .text-muted {
+    color: rgba(242, 234, 211, 0.55);
+  }
+  .text-faint {
+    color: rgba(242, 234, 211, 0.35);
+  }
+}
