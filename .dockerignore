@@ -14,7 +14,11 @@ __pycache__
 htmlcov
 
 .ipynb_checkpoints
-notebooks/.ipynb_checkpoints
+notebooks
+frontend/node_modules
+frontend/.next
+presentation
+report
 
 data/raw/*
 data/processed/*

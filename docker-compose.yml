@@ -1,7 +1,47 @@
 services:
+  trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: trading-ml-api
+    container_name: trading-ml-trainer
+    profiles: ["train"]
+    command: >
+      python -m scripts.train_and_save
+      --ticker ${TICKER:-^GSPC}
+      --start ${START_DATE:-2010-01-01}
+      --end ${END_DATE:-2024-12-31}
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    working_dir: /app
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: trading-ml-api
+    container_name: trading-ml-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro
+    working_dir: /app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: trading-ml-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
   jupyter:
     build: .
     container_name: trading-ml-jupyter
+    profiles: ["jupyter"]
     ports:
       - "8888:8888"
     volumes:

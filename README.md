@@ -75,8 +75,10 @@ position sizing и stop-loss на отложенной тестовой выбо
 ├── .pre-commit-config.yaml     # Хуки pre-commit (ruff + basic checks)
 ├── .dockerignore
 ├── .env.example                # Шаблон переменных окружения
-├── Dockerfile                  # Python 3.10 + JupyterLab
-├── docker-compose.yml          # Сервис jupyter на :8888
+├── Dockerfile                  # Python 3.10 + JupyterLab (для ноутбуков)
+├── Dockerfile.api              # Образ для API и trainer
+├── frontend/Dockerfile         # Multi-stage сборка Next.js
+├── docker-compose.yml          # Сервисы api, frontend, trainer (profile train), jupyter (profile jupyter)
 ├── Makefile                    # Шорткаты команд
 ├── pyproject.toml              # Конфиги ruff и pytest
 ├── requirements.txt            # Runtime-зависимости
@@ -87,29 +89,72 @@ position sizing и stop-loss на отложенной тестовой выбо
 
 ## Быстрый старт
 
-Требуется Python 3.10 либо Docker.
+Требуется Python 3.10 + Node.js 20 (для локальной разработки) либо Docker.
 
-### Вариант 1 — Docker (рекомендуется)
+### Полный стек в Docker (одна команда)
+
+API (FastAPI :8000), фронтенд (Next.js :3000) и опциональный шаг обучения моделей — через `make up`.
 
 ```bash
 cp .env.example .env
-make docker-build
-make docker-up
-# JupyterLab -> http://localhost:8888
+
+# Первый запуск — обучить модели и поднять api+frontend
+make up TRAIN=1
+
+# Последующие запуски (модели уже в models/) — просто поднять сервисы
+make up
 ```
 
-### Вариант 2 — локальное окружение
+Открыть:
+- Frontend: <http://localhost:3000>
+- API + Swagger: <http://localhost:8000/docs>
+
+Кастомные параметры обучения (значения по умолчанию `^GSPC`, 2010-01-01, 2024-12-31):
+```bash
+TICKER=AAPL START_DATE=2015-01-01 END_DATE=2024-12-31 make up TRAIN=1
+```
+
+Управление:
+```bash
+make logs    # tail логов api + frontend
+make down    # остановить контейнеры
+```
+
+Внутри: `trainer` — отдельный сервис в profile `train`, запускается через `compose run` синхронно и пишет артефакты в `./models/` (bind-mount). `api` монтирует ту же папку в read-only. `frontend` дергает API через `http://localhost:8000` из браузера (host port mapping).
+
+### JupyterLab в Docker (для ноутбуков)
+
+```bash
+make docker-up      # http://localhost:8888
+make docker-down
+```
+
+### Локальная разработка без Docker
+
+Полностью локальный стек: Python venv для ML/API + Node для фронта.
 
 ```bash
 git clone <url>
 cd hseml-group-project-byevyx
 
+# 1. Python окружение
 python3 -m venv .venv
 source .venv/bin/activate          # Linux/macOS
 # .venv\Scripts\activate            # Windows
-
 cp .env.example .env
-make install-dev                    # зависимости + pre-commit hooks
+make install-dev                    # runtime + dev-зависимости + pre-commit
+
+# 2. Обучить модели (~1–5 мин, нужно один раз)
+make api-train
+
+# 3. В одном терминале — API:
+make api-up                         # uvicorn на :8000
+
+# 4. В другом терминале — frontend:
+cd frontend
+cp .env.local.example .env.local    # NEXT_PUBLIC_API_URL=http://localhost:8000
+npm install
+npm run dev                         # http://localhost:3000
 ```
 
 
@@ -123,8 +168,13 @@ make install-dev                    # зависимости + pre-commit hooks
 | `make format`    | автоформатирование + автофикс                    |
 | `make test`      | запуск `pytest`                                  |
 | `make precommit` | прогнать все pre-commit хуки по всем файлам      |
-| `make docker-up` | поднять JupyterLab в Docker                      |
-| `make docker-down` | остановить контейнеры                          |
+| `make up`        | поднять api + frontend в Docker (`TRAIN=1` — сначала обучить модели) |
+| `make down`      | остановить api + frontend (и trainer, если есть) |
+| `make logs`      | tail логов api + frontend                        |
+| `make api-train` | обучить модели локально (без Docker), сохранить в `models/` |
+| `make api-up`    | запустить FastAPI локально (без Docker) на :8000 |
+| `make docker-up` | поднять JupyterLab в Docker на :8888             |
+| `make docker-down` | остановить все контейнеры                      |
 | `make clean`     | очистить кеши (`__pycache__`, `.pytest_cache`, `.ruff_cache`) |
 
 Переменные окружения (`.env`): `TICKER`, `START_DATE`, `END_DATE`, `RANDOM_SEED`, `MODEL_DIR`, `DATA_DIR` — см. [`.env.example`](.env.example).
@@ -210,6 +260,9 @@ bt = backtest_with_sizing(
 
 ### Запуск
 
+В Docker (рекомендуется) — см. [Полный стек в Docker](#полный-стек-в-docker-одна-команда): `make up TRAIN=1` поднимает API вместе с фронтом и обучением.
+
+Локально:
 ```bash
 pip install -r requirements.txt
 make api-train     # обучает модели и пишет models/*.joblib + models/metadata.json
@@ -250,6 +303,9 @@ curl -X POST http://localhost:8000/backtest \
 
 Поверх API поднят Next.js-интерфейс в духе японского трейдингового дашборда эпохи Эдо (бордовый, кармин, чёрный, золото — без фиолетового). Полная документация — в [`frontend/README.md`](frontend/README.md).
 
+В Docker (вместе с API): `make up` — см. выше. Используется production-сборка из [`frontend/Dockerfile`](frontend/Dockerfile).
+
+Локально (dev-режим с hot-reload):
 ```bash
 cd frontend
 cp .env.local.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8000
